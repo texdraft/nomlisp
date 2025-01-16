@@ -1,2 +1,3 @@
 # nomlisp
-lisp?
+
+This is supposed to be a statically-typed functional Lisp.
