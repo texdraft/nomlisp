@@ -6,7 +6,7 @@
                     racket/pretty
                     (only-in racket/base #%module-begin)]]
 
-@title{Nomlisp object representation}
+@title{Object representation}
 
 @chunk[<Data>
        (module Data racket
