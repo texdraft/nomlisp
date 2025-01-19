@@ -40,18 +40,27 @@ have type-directed treatment, which must happen during type
 checking.
 
 @chunk[<abstract>
+       (struct Node
+         ())
+
+       (struct Expression Node ())
        <expression-syntax>
+
+       (struct Type Node ())
        <type-syntax>
+
+       (struct Pattern Node ())
        <pattern-syntax>
+
        <post-elaboration-syntax>]
 
 @subsection{Type trees}
 
 @chunk[<type-syntax>
-       (struct TypeName
+       (struct TypeName Type
          (name))
 
-       (struct ExternalType
+       (struct ExternalType Type
          (module name))]
 
 Modules end up represented as environment objects at
@@ -59,29 +68,29 @@ runtime; for type checking, we need to know the types of the
 bindings in that environment.
 
 @chunk[<type-syntax>
-       (struct ModuleType
+       (struct ModuleType Type
          (types))]
 
 @chunk[<type-syntax>
-       (struct TypeApplication
+       (struct TypeApplication Type
          (type
           argument))]
 
 @chunk[<type-syntax>
-       (struct ForAll
+       (struct ForAll Type
          (name
           type))]
 
 @chunk[<type-syntax>
-       (struct TupleType
+       (struct TupleType Type
          (types))]
 
 @chunk[<type-syntax>
-       (struct ConstrainedType
+       (struct ConstrainedType Type
          (constraints
           type))
 
-       (struct Constraint
+       (struct Constraint Type
          (name
           types))]
 
@@ -98,62 +107,62 @@ bindings in that environment.
 @subsection{Expression trees}
 
 @chunk[<expression-syntax>
-       (struct Variable
+       (struct Variable Expression
          (name))
 
-       (struct ExternalVariable
+       (struct ExternalVariable Expression
          (module name))]
 
 @chunk[<expression-syntax>
-       (struct Constant
+       (struct Constant Expression
          (value))
 
-       (struct Unit
+       (struct Unit Expression
          ())]
 
 @chunk[<expression-syntax>
-       (struct Lambda
+       (struct Lambda Expression
          (parameter-thing
           body))
 
-       (struct Application
+       (struct Application Expression
          (function
           arguments))]
 
 @chunk[<expression-syntax>
-       (struct The
+       (struct The Expression
          (expression
           type))]
 
 @chunk[<expression-syntax>
-       (struct Delimit
+       (struct Delimit Expression
          (expression))
 
-       (struct Capture
+       (struct Capture Expression
          (name expression))
 
        (struct Sequence
          (expressions))]
 
 @chunk[<expression-syntax>
-       (struct Primitive
+       (struct Primitive Expression
          (name))]
 
 @chunk[<expression-syntax>
-       (struct Tuple
+       (struct Tuple Expression
          (components))]
 
 @chunk[<expression-syntax>
-       (struct Case
+       (struct Case Expression
          (scrutinee
           cases))]
 
 @chunk[<expression-syntax>
-       (struct Let
+       (struct Let Expression
          (bindings
           body))
 
-       (struct LetRec
+       (struct LetRec Expression
          (bindings
           body))]
 
@@ -177,25 +186,25 @@ bindings in that environment.
 @subsection{Patterns}
 
 @chunk[<pattern-syntax>
-       (struct VariablePattern
+       (struct VariablePattern Pattern
          (name))
 
-       (struct ConstantPattern
+       (struct ConstantPattern Pattern
          (value))
 
-       (struct TuplePattern
+       (struct TuplePattern Pattern
          (components))]
 
 @chunk[<pattern-syntax>
-       (struct ConstructorPattern
+       (struct ConstructorPattern Pattern
          (name
           arguments))
 
-       (struct ExternalConstructorPattern
+       (struct ExternalConstructorPattern Pattern
          (name
           arguments))
 
-       (struct RecordPattern
+       (struct RecordPattern Pattern
          (fields))]
 
 @chunk[<provisions/syntax>
@@ -212,17 +221,17 @@ After expansion and elaboration some new expression trees
 appear.
 
 @chunk[<post-elaboration-syntax>
-       (struct FixedLambda
+       (struct FixedLambda Expression
          (parameter
           body))
 
-       (struct Lambdas
+       (struct Lambdas Expression
          (lambdas))
 
-       (struct CaptureEnvironment
+       (struct CaptureEnvironment Expression
          ())
 
-       (struct LetRec/Types/Data
+       (struct LetRec/Types/Data Expression
          (bindings
           body))]
 
