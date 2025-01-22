@@ -31,25 +31,25 @@ Here is some (Racket-level) sugar for expressing Nomlisp
 types.
 
 @chunk[<elaborate>
-       (define arrow-constructor (TypeName "→"))
-       (define varrow-constructor (TypeName "→*"))
-       (define unit-type (TypeName "Unit"))
+       (define arrow-constructor (Type-Name "→"))
+       (define varrow-constructor (Type-Name "→*"))
+       (define unit-type (Type-Name "Unit"))
 
        (define-match-expander →
          (syntax-rules ()
            [(_ T1 T2)
-            (TypeApplication (TypeApplication (== arrow-constructor) T1) T2)])
+            (Type-Application (Type-Application (== arrow-constructor) T1) T2)])
          (syntax-rules ()
            [(_ T1 T2)
-            (TypeApplication arrow-constructor T1 T2)]))
+            (Type-Application arrow-constructor T1 T2)]))
 
        (define-match-expander →*
          (syntax-rules ()
            [(_ T1 T2)
-            (TypeApplication (TypeApplication (== varrow-constructor) T1) T2)])
+            (Type-Application (Type-Application (== varrow-constructor) T1) T2)])
          (syntax-rules ()
            [(_ T1 T2)
-            (TypeApplication varrow-constructor T1 T2)]))]
+            (Type-Application varrow-constructor T1 T2)]))]
 
 @chunk[<requirements/elaborate>
        (submod "syntax.scrbl" Syntax)]
