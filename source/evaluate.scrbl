@@ -38,7 +38,7 @@ variables matter at runtime.
                       (Binding-value binding)))]
            [(Constant value)
             value]
-           [(FixedLambda parameter body)
+           [(Lambda parameter body)
             (λ (argument)
               (evaluate body (extend-environment environment 'variable parameter argument)))]
            [(Application function argument)
@@ -67,7 +67,7 @@ since forcing a currently-forcing promise raises an
 exception.
 
 @chunk[<evaluate/external>
-       [(ExternalVariable module-variable name)
+       [(External-Variable module-variable name)
         (lookup 'variable module-variable environment
                 (λ (environment)
                   (lookup 'variable name environment
@@ -98,7 +98,7 @@ constants, and variables.
 @chunk[<evaluation>
        (define (match-then-or pattern scrutinee yes no environment)
          (match pattern
-           [(TuplePattern patterns)
+           [(Tuple-Pattern patterns)
             (let loop ([patterns patterns]
                        [component 0]
                        [environment environment])
@@ -112,9 +112,9 @@ constants, and variables.
                                          environment))
                                  no
                                  environment)))]
-           [(VariablePattern name)
+           [(Variable-Pattern name)
             (yes (extend-environment environment 'variable name scrutinee))]
-           [(ConstantPattern value)
+           [(Constant-Pattern value)
             (if (equal? value scrutinee)
                 (yes environment)
                 (no))]))]
@@ -139,7 +139,7 @@ the values in this environment, updating the inital bindings
 as we go.
 
 @chunk[<evaluate/letrec>
-       [(LetRec bindings body)
+       [(Let-Rec bindings body)
         (let loop ([original-bindings bindings]
                    [environment environment]
                    [Bindings (list)]
