@@ -266,14 +266,11 @@
         [_
          (loop (cons (string c) elements))]))))
 
-#;(define xexpr->html5 pretty-print)
-
 (define (do-grammar name in out)
   (define-values (grammar nonterminals) (parse-grammar (tokenize in)))
   (write-string (xexpr->html5 (pretty-grammar grammar nonterminals)
                               #:wrap 500)
-                out)
-  (pretty-print grammar))
+                out))
 
 (define (do-grammar-file in-name out-name)
   (call-with-input-file in-name
