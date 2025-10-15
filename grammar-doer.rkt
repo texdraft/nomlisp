@@ -7,8 +7,8 @@
 (define (unescape s)
   (regexp-replace* #rx"\\\\(.)" s "\\1"))
 
-(define arrow (make-parameter "::="))
-(define bar (make-parameter "|"))
+(define arrow (make-parameter '(div [[class "arrow"]] "::=")))
+(define bar (make-parameter '(div [[class "bar"]] "|")))
 
 (define (tokenize in)
   (port-count-lines! in)
@@ -170,8 +170,8 @@
   (for/list ([alternative alternatives]
              [i (in-naturals)])
     (define separator (if (= i 0)
-                          '(div [[class "arrow"]] "::=")
-                          '(div [[class "bar"]] "|")))
+                          (arrow)
+                          (bar)))
     (match alternative
       [`(alternative ,stuff ... (comment ,text))
        `(dd [[class "alternative"]]
@@ -239,7 +239,6 @@
                            (span [[class "close-bracket"]] "]"))]
                    [`(or . ,operands)
                     `(span ,@(append-map (λ (o1 o2)
-                                           (displayln (cons o1 o2))
                                            (if o2
                                                (append (pretty-element o1 nonterminals #t)
                                                      (list "| "))
