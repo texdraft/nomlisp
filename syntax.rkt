@@ -10,9 +10,7 @@
   #:transparent)
 
 (struct Free-Names
-  (terms
-   patterns
-   types))
+  (synspaces)) ; list of (cons synspace name)
 
 (struct Syntax
   (form
@@ -55,7 +53,7 @@
 
 (define (make-syntactic-closure environment free expression [origin #f])
   (match expression
-    [(Syntax expression´ #f (Free-Names '() '() '()) origin´)
+    [(Syntax expression´ #f (Free-Names '()) origin´)
      (Syntax expression´ environment free (or origin origin´))]
     [else
      (Syntax expression environment free origin)]))
