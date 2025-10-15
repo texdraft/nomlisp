@@ -1,0 +1,125 @@
+body {
+	font-family: "IBM Plex Serif", serif;
+}
+
+h1 {
+	font-size: xxx-large;
+}
+
+h2 {
+	font-size: xx-large;
+}
+
+h3 {
+	font-size: x-large;
+}
+
+h4 {
+	font-size: large;
+}
+
+.alternative {
+	margin: 0;
+}
+
+.rule,
+.alternatives {
+	padding-top: 1em;
+}
+
+.arrow,
+.bar {
+	width: 3ch;
+	text-align: center;
+	grid-column: 1;
+}
+
+dl.rule-sequence {
+	width: 100em;
+	display: grid;
+	grid-template-columns: 25% 75%;
+}
+
+dl.rule-sequence dt {
+	grid-column: 1;
+}
+
+dl.rule-sequence .alternative {
+	display: grid;
+	grid-template-columns: 3ch 1fr 1fr;
+}
+
+.open-bracket,
+.open-brace {
+	padding-right: 0.125em;
+}
+
+.close-bracket,
+.close-brace {
+	padding-left: 0.125em;
+}
+
+.quantification {
+	padding-left: 0.25em;
+}
+
+.expansion {
+	grid-column: 2;
+	white-space: nowrap;
+}
+
+.comment {
+	grid-column: 3;
+}
+
+dt.rule {
+	text-align: right;
+}
+
+
+.natural-language {
+	font-style: italic;
+}
+
+.natural-language code {
+	font-style: normal;
+	font-family: "IBM Plex Mono", monospace;
+}
+
+.nonterminal a {
+	text-decoration: none;
+	color: blue;
+}
+
+.nonterminal a:hover {
+	color: lightblue;
+}
+
+.literal {
+	font-family: "IBM Plex Mono", monospace;
+}
+
+sup,
+sub {
+	line-height: 0;
+}
+
+body {
+	display: flex;
+	flex-direction: column;
+	align-items: center;	
+	justify-content: center;
+	word-spacing: 0.25em;
+}
+
+.natural-language {
+	word-spacing: 0em;
+}
+
+.rule td {
+	padding-top: 1em;
+}
+
+.postfix, {
+	padding-left: 0.25em;
+}

@@ -1,0 +1,356 @@
+"Lexical structure" ⟨
+
+  s-expression →
+  | identifier
+  | dotted-identifier
+  | label
+  | constant
+  | (s-expression …)
+  | @ s-expression
+  | ⇐ s-expression
+  | [# identifier] delimited-expression
+  | [# dotted-identifier] delimited-expression
+  ;
+
+  dotted-identifier →
+  | identifier . identifier
+  | identifier . dotted-identifier
+  ;
+
+  delimited-expression →
+  | opening-delimiter_i s-expression … closing-delimiter_i
+  ;
+
+  opening-delimiter_i →
+  | ⟦the ith Unicode code point with Bidi_Paired_Bracket_Type = Open⟧
+  ;
+
+  closing-delimiter_i →
+  | ⟦the ith Unicode code point with Bidi_Paired_Bracket_Type = Close⟧
+  ;
+
+  identifier →
+  | identifier-element …+, ⟦as long as constant does not generate this string⟧
+  ;
+
+  label →
+  | : identifier
+  | : dotted-identifier
+  ;
+
+  identifier-element →
+  | ⟦any character that isn't an opening/closing delimiter, whitespace, $(code "#"), or $(code "\\")⟧
+  | \\ ⟦any character⟧
+  ;
+
+  constant →
+  | \" double-string-element … \"
+  | ‘ single-string-element … ’
+  | number
+  ;
+
+  double-string-element →
+  | ⟦any character other than \ or "⟧
+  | \"
+  | general-escape
+  ;
+
+  single-string-element →
+  | ⟦any character other than \ or ’⟧
+  | \\’
+  | general-escape
+  ;
+
+  general-escape →
+  | \\\\
+  | \\ hexadecimal-digit …+
+  ;
+
+  number →
+  | decimal-digit …+
+  | radix r radix-digit
+  | decimal-digit [decimal-digit] R radix-digit
+  ;
+
+  radix →
+  | 1 ∨ 2 ∨ ⟦etc.⟧ ∨ 36
+  ;
+
+  radix-digit →
+  | hexadecimal-digit
+  | {g ∨ G} ∨ {h ∨ H} ∨ ⟦etc.⟧ ∨ {z ∨ Z}
+  ;
+
+  decimal-digit →
+  | 0 ∨ 1 ∨ etc. ∨ 9
+  ;
+
+  hexadecimal-digit →
+  | decimal-digit
+  | {a ∨ A} ∨ {b ∨ B} ∨ ⟦etc.⟧ ∨ {f ∨ F}
+  ;
+
+  ⟩
+
+"Phrase structure" ⟨
+
+  "Basics" ⟨
+
+    name →
+    | identifier
+    | qualified-name
+    ;
+
+    qualified-name →
+    | dotted-identifier, ⟦name exported by some module⟧
+    ;
+
+    delimiter-template →
+    | [# name] delimited-expression
+    ;
+
+    parameter →
+    | @ name_term, ⟦bound to variadic argument list⟧
+    | pattern
+    ;
+
+    argument →
+    | expression
+    | @ expression, ⟦spread variadic argument list⟧
+    | ⇐ expression, ⟦instance supply to function⟧
+    ;
+
+    pattern →
+    | (as name_term pattern)                   , ⟦bind matched value to name⟧
+    | name_pattern                             , ⟦nullary constructor⟧
+    | name_term                                , ⟦bind any value⟧
+    | (name_pattern pattern …+)                , ⟦constructor pattern⟧
+    | constant                                 , ⟦literal pattern⟧
+    | (record {label [pattern]} …+ [name_term]), ⟦match record with row⟧
+    | (tuple pattern …)                        , ⟦match tuple⟧
+    | (where pattern (pattern expression) …)   , ⟦guard with additional matches⟧
+    ;
+
+  ⟩
+
+  "Declarations" ⟨
+
+    "Modules" ⟨
+
+      module →
+      | (define/module name_module (export …)) declaration …+, ⟦file shorthand⟧
+      | module-definition …+ models directory as module
+      ;
+
+      module-definition →
+      | (define/module name_module (export …) declaration …+)
+      ;
+
+      export →
+      | (syntax syntax-port …+)                        , ⟦syntax bindings⟧
+      | (except export export …)                       , ⟦omit bindings⟧
+      | (for-syntax export …)                          , ⟦higher-phase bindings⟧
+      | (prefix identifier export)                     , ⟦automatically rename⟧
+      | ported-name_term                               , ⟦variable⟧
+      | ('module ported-name_module)                  , ⟦submodule⟧
+      | ('type ported-name_type)                        , ⟦type synonym, ADT with no constructors⟧
+      | ('type ported-name_type (ported-name_term …))   , ⟦ADT with constructors⟧
+      | (class ported-name_type [(ported-name_term …)]), ⟦type class, optional methods⟧
+      | (instance ported-name_type)                    , ⟦type class instance⟧
+      | ('pattern ported-name_pattern)                  , ⟦constructor for matching⟧
+      ;
+
+      syntax-port →
+      | (name_synspace ported-syntax)     , ⟦item in one synspace⟧
+      | ((name_synspace …+) ported-syntax), ⟦bindings from multiple synspaces⟧
+      ;
+
+      ported-syntax →
+      | ported-name …
+      | ported-delimiter-template …
+      ;
+
+      ported-name_ns →
+      | name_ns
+      | (rename name_ns name_ns), ⟦import/export under alias⟧
+      ;
+
+      ported-delimiter-template_ns →
+      | delimiter-template_ns
+      | (rename delimiter-template_ns delimiter-template_ns), ⟦import/export under alias⟧
+      ;
+
+      import →
+      | name_module, ⟦all exports from module⟧
+      | import-item
+      | (for-syntax import …), ⟦available at higher phase⟧
+      | (prefix identifier import), ⟦automatically rename⟧
+      | (from name_module import-item …+), ⟦restrict imported bindings⟧
+      ;
+
+      import-item →
+      | (qualified import [name_module]), ⟦new module name⟧
+      | ported-name_term, ⟦variable⟧
+      | ('module ported-name_module), ⟦submodule⟧
+      | ('type ported-name_type), ⟦type synonym or ADT⟧
+      | (class ported-name_type), ⟦type class⟧
+      | (instance ported-name_type), ⟦type class instance⟧
+      | ('pattern ported-name_pattern), ⟦constructor for matching⟧
+      | (except import import-item …), ⟦omit bindings⟧
+      | (syntax syntax-port …+), ⟦syntactic bindings⟧
+      ;
+    ⟩
+
+    "Declarations" ⟨
+
+      declaration →
+      | definition
+      | (implicit name_type …), ⟦make instances implicit⟧
+      | metadata-declaration
+      | ('import import …), ⟦bring in external bindings⟧
+      | (splice declaration …) splice nested declarations
+      | (for-syntax declaration …) define at higher phase
+      ;
+
+      definition →
+      | module-definition
+      | variable-definition
+      | (define/type defining-type-name type)                              , ⟦type synonym⟧
+      | (define/type defining-type-name data-body)                         , ⟦algebraic data type⟧
+      | (define/class defining-type-name typeclass-item …)                 , ⟦type class⟧
+      | (define/instance name_type constraint instance-item …)             , ⟦type class instance⟧
+      | (define/syntax name_term (name_synspace …+) expression)             , ⟦syntactic binding⟧
+      | (define/sugar delimiter-template_term (name_synspace …+) expression) , ⟦syntactic extension⟧
+      ;
+
+      variable-definition →
+      | (define (name parameter …) [: type] body)           , ⟦shorthand for one lambda⟧
+      | (define name_term [: type] body)                    , ⟦bind to value⟧
+      | (define name_term [: type] (λ (parameter …) body)…+), ⟦define by matching⟧
+      ;
+
+      defining-type-name →
+      | (∀ (name_type …+) defining-type-name), ⟦quantified arguments⟧
+      | type-name-with-possible-arguments
+      | (⇒ constraint …+ defining-type-name), ⟦constrained arguments⟧
+      ;
+
+      type-name-with-possible-arguments →
+      | name_type               , ⟦no arguments⟧
+      | (name_type name_type …+), ⟦type with arguments⟧
+      ;
+
+      data-body →
+      | traditional-data-item traditional-data-item …+, ⟦avoid ambiguity by requiring two⟧
+      | gadt-item …+, ⟦always unambiguous⟧
+      ;
+
+      traditional-data-item →
+      | name_term, ⟦nullary constructor⟧
+      | (name_term type …+), ⟦n-ary constructor⟧
+      ;
+
+      gadt-item →
+      | name_term : type, ⟦generalized algebraic data type variant⟧
+      ;
+
+      typeclass-item →
+      | name_term : type    , ⟦method with ascription⟧
+      | variable-definition , ⟦default method⟧
+      | metadata-declaration, ⟦optimization etc.⟧
+      ;
+
+      instance-item →
+      | variable-definition , ⟦method definition⟧
+      | metadata-declaration, ⟦optimization etc.⟧
+      ;
+
+      metadata-declaration →
+      | (declare metadata …)
+      ;
+
+      metadata →
+      | (deprecated spaced-name …)               , ⟦bindings shouldn't be used⟧
+      | (ignore name_term …)                     , ⟦names unused in scope⟧
+      | (ignorable name_term …)                  , ⟦names may be unused in scope⟧
+      | (inline name_term …)                     , ⟦request inline expansion⟧
+      | (notinline name_term …)                  , ⟦forbid inline expansion⟧
+      | (optimize {quality ∨ (quality number)} …), ⟦request optimization priorities⟧
+      | unreachable                              , ⟦scope won't be reached⟧
+      | likely                                   , ⟦scope likely to be reached⟧
+      | unlikely                                 , ⟦scope unlikely to be reached⟧
+      ;
+
+      spaced-name →
+      | name_term             , ⟦variable⟧
+      | (type name_type)      , ⟦type synonym or ADT⟧
+      | (class name_type)     , ⟦type class⟧
+      | (instance name_type)  , ⟦type class instance⟧
+      | (pattern name_pattern), ⟦constructor for matching⟧
+      | (module name_module)  , ⟦submodule⟧
+      | (syntax syntax-names) , ⟦syntactic binding⟧
+      ;
+
+      syntax-names →
+      | (name_synspace name)
+      | ((name_synspace …+) name)
+      ;
+
+      quality →
+      | debug, ⟦optimize debuggability⟧
+      | speed, ⟦optimize time efficiency⟧
+      | space, ⟦optimize space efficiency⟧
+      ;
+    ⟩
+  ⟩
+
+  "Types" ⟨
+    type →
+    | name_type                      , ⟦type variable or nullary constructor⟧
+    | (∀ (type-parameter …+) type)   , ⟦generic type⟧
+    | (⇒ constraint …+ type)         , ⟦constrained type⟧
+    | (type type-argument …+)        , ⟦type application⟧
+    | (record {label type} …+ [type]), ⟦type of records with row⟧
+    | (tuple type …)                 , ⟦type of tuples⟧
+    ;
+
+    type-parameter →
+    | name_type
+    | name_type : type, ⟦kind ascription⟧
+    ;
+
+    constraint →
+    | type            , ⟦class applied to arguments⟧
+    | name_type : type, ⟦instance argument⟧
+    ;
+
+    type-argument →
+    | type
+    | ⇐ type, ⟦instance supply to type⟧
+    ;
+  ⟩
+
+  "Terms" ⟨
+
+    body →
+    | declaration … expression …+ ;
+
+    expression →
+    | name_term                                   , ⟦variable⟧
+    | constant                                    , ⟦literal value⟧
+    | (λ name_term [: type] body)                 , ⟦variadic abstraction⟧
+    | (λ (parameter …) body)                      , ⟦fixed-arity abstraction⟧
+    | (the type expression)                       , ⟦type ascription⟧
+    | (delimit expression expression)             , ⟦delimit continuation⟧
+    | (capture-to expression name_term expression), ⟦take continuation⟧
+    | (begin body)                                , ⟦introduce body⟧
+    | (quote expression)                          , ⟦treat as syntax object⟧
+    | (record {label expression} … [expression])  , ⟦construct record with row⟧
+    | (tuple expression …)                        , ⟦construct tuple⟧
+    | (case expression (pattern expression) …+)   , ⟦pattern matching⟧
+    | (let ((pattern expression) …) body)         , ⟦non-recursive bindings⟧
+    | (letrec ((pattern expression) …) body)      , ⟦recursive bindings⟧
+    | (expression argument …+)                    , ⟦application⟧
+    ;
+  ⟩
+⟩
