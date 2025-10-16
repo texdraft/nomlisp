@@ -3,6 +3,8 @@
 (require racket/struct
          "ast.rkt")
 
+(require racket/stxparam)
+
 (provide (all-defined-out))
 
 (struct Origin
@@ -27,19 +29,6 @@
      (unwrap form)]
     [else
      s]))
-
-(define-match-expander $
-  (syntax-rules ()
-    [(_ p)
-     (or (Syntax (app (λ (x) (unwrap x)) p) _ _ _)
-         p)]))
-
-(define-match-expander Sugar-Template
-  (syntax-rules ()
-    [(_)
-     (or (Prefixed _ _)
-         (Delimited _ _)
-         (Prefixed _ (Delimited _ '())))]))
 
 (define (make-syntax form origin [environment #f] [free '()])
   (Syntax form environment free origin))

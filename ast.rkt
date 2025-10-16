@@ -4,8 +4,6 @@
 
 (provide (all-defined-out))
 
-; Input s-expressions
-
 (define-syntax define-tree
   (syntax-rules ()
     [(_ name (fields ...))
@@ -17,6 +15,8 @@
                  (lambda (s) (match s
                                [(name fields ...)
                                 (list fields ...)]))))])]))
+
+; Input s-expressions
 
 (define-tree Identifier (name))
 (define-tree Dotted (left right))
@@ -38,13 +38,6 @@
    expression))
 
 ; Representation of fully expanded programs
-
-(struct Module
-  (body
-   exports
-   environment
-   meta)
-  #:mutable)
 
 (struct Export
   (external-name
@@ -76,6 +69,7 @@
 (define-tree Let (bindings body))
 (define-tree Let-Recursive (bindings body))
 (define-tree Call (operator operands))
+(define-tree Quote (datum))
 
 ; types
 
@@ -94,11 +88,11 @@
 (define-tree Constructor-Pattern (name patterns))
 (define-tree Record-Pattern (fields+patterns))
 (define-tree Tuple-Pattern (patterns))
+(define-tree Where (pattern guards))
 
 ; declarations
 
 (define-tree Define-Type (name etc. definition))
-(define-tree Define-New-Type (name etc. constructor))
 (define-tree Define-Data (name etc. constructors))
 (define-tree Define-Class (name etc. items))
 (define-tree Define-Module (name exports body))

@@ -11,21 +11,9 @@
 
 ;; Expansion
 
-;; represents “syntactic namespace”
+;; represents a “syntactic namespace”
 (struct Synspace
   (name))
-
-(define-syntax define-synspace
-  (syntax-rules ()
-    [(_ name1 name2)
-     (define name1 (Synspace name2))]))
-
-(define-synspace term-synspace "term")
-(define-synspace type-synspace "type")
-(define-synspace pattern-synspace "pattern")
-(define-synspace module-synspace "module")
-(define-synspace declaration-synspace "declaration")
-(define-synspace synspace-synspace "synspace")
 
 ;; a frame maps names to binding sets, where
 ;;  a binding set maps synspaces to phase vector, where
@@ -45,6 +33,9 @@
 ;; make new empty phase vector, up to given phase
 (define (new-phase-vector [phases 1])
   (make-vector phases #f))
+
+(define (empty-syntactic)
+  (Syntactic-Environment (list (new-frame))))
 
 ;; most recent frame of syntactic environment
 (define (most-recent-frame se)
@@ -72,40 +63,34 @@
          (hash-set! synspace-map synspace (vector-extend result desired-length))]
         [else result]))
 
-;; add binding to syntactic environment, given name and synspace and phase
-(define (add-syntactic-binding! name phase synspace meaning se)
+;; add binding to syntactic environment, given name and synspaces and phase
+(define (add-syntactic-binding! name phase synspaces meaning se)
   (let ([frame (most-recent-frame se)])
-    (if (lookup-in-frame name phase synspace frame)
+    (if (lookup-in-frame name phase synspaces frame)
         (error "Redefinition prohibited in the same scope")
-        (let ([phases (frame-get-phases! frame name synspace phase)])
-          (vector-set! phases phase meaning)))))
+        (for ([synspace synspaces])
+          (let ([phases (frame-get-phases! frame name synspace phase)])
+            (vector-set! phases phase meaning)))))
+  meaning)
 
 ;; look for binding in one frame, return #f if not found
-(define (lookup-in-frame name phase synspace frame)
-  (vector-ref (frame-get-phases! frame name synspace phase)
-              phase))
+(define (lookup-in-frame name phase synspaces frame)
+  (let/ec found
+    (for ([synspace synspaces])
+      (define result (vector-ref (frame-get-phases! frame name synspace phase)
+                                 phase))
+      (found result))
+    #f))
 
 ;; look for binding in all frames, call continuation if not found
-(define (lookup-syntactic name phase synspace se not-found)
+(define (lookup-syntactic name phase synspaces se not-found)
   (let/ec found
     (for ([frame (in-frames se)])
-      (define result (lookup-in-frame name phase synspace frame))
+      (define result (lookup-in-frame name phase synspaces frame))
       (if result
           (found result)
           (void)))
-    (not-found name phase synspace)))
-
-;; change most recent meaning given name and synspace and phase,
-;; or add new entry
-(define (update-meaning! name phase synspace meaning se)
-  (if (lookup-syntactic name phase synspace se (const #f))
-      (let/ec found
-        (for ([frame (in-frames se)])
-          (vector-set! (frame-get-phases! frame name synspace phase)
-                       phase
-                       meaning)))
-      (add-syntactic-binding! name phase synspace meaning se))
-  meaning)
+    (not-found name phase synspaces)))
 
 ;; iteration abstractions
 (define (in-frames se)
@@ -127,6 +112,22 @@
   (filter (λ (data)
             (apply p data))
           (map-bindings list se)))
+
+;; convert a list of (meaning, name, synspace, phase) into a
+;; new syntactic environment
+(define (reconstruct-syntactic bindings)
+  (define se (empty-syntactic))
+  (map (match-λ [(list meaning name synspace phase)
+                 (add-syntactic-binding! name phase (list synspace) meaning se)])
+       bindings)
+  se)
+
+;; create new environment where all bindings are taken from use-environment
+;; except for those mentioned in free-names, which are taken from
+;; captured-environment
+(define (merge-free-names use-environment captured-environment free-names)
+  (reconstruct-syntactic (map-bindings (λ (x) x)
+                                       use-environment)))
 
 ;; Elaboration
 
