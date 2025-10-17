@@ -4,6 +4,8 @@
 
 (provide (all-defined-out))
 
+(require "environments.rkt")
+
 (define-syntax define-tree
   (syntax-rules ()
     [(_ name (fields ...))
@@ -62,9 +64,9 @@
   #:methods gen:custom-write
   [(define (write-proc s out _)
      (fprintf out
-              "⟨~A:~A~A⟩"
+              "⟨~A ∈ ~A~A⟩"
               (Name-name s)
-              (Name-space s)
+              (map Synspace-name (Name-space s))
               (if (Name-origin s)
                   (format " ~V" (Name-origin s))
                   "")))])

@@ -439,7 +439,7 @@
                                             (make-compare context)))
                    context)]
     [(Primitive-Transformer p n)
-     (if (allowed-primitive? p context)
+     (if (allowed-primitive? n context)
          (p sx context)
          (error (format "Primitive operator ~A used out of context" n)))]))
 
@@ -448,43 +448,46 @@
    info)
   #:transparent)
 
-(define (classify-meaning meaning unbound)
+(define (classify-meaning name meaning unbound)
   (match meaning
     [(? Transformer?)
      (Class 'macro-id meaning)]
     [(Primitive-Transformer _ name)
-     (Class 'primitive-id meaning name)]
+     (Class 'primitive-id (cons meaning name))]
     [(External _ _)
      (Class 'external meaning)]
     [(Name _ _ _)
      (Class 'non-macro meaning)]
     [_
      (if (eqv? meaning unbound)
-         (Class 'unbound #f)
+         (Class 'unbound name)
          (Class 'random meaning))]))
 
 (define (classify-combination operator-classification operator operands)
   (match operator-classification
     [(Class 'macro-id meaning)
      (Class 'macro-call meaning)]
-    [(Class 'primitive-id (cons name meaning))
+    [(Class 'primitive-id (cons meaning name))
      (if (declaration-name? name)
          (Class 'declaration (cons name meaning))
          (Class 'primitive meaning))]
     [(Class 'unbound name)
      (Class 'unbound-application (cons name operands))]
+    [(Class 'rename meaning)
+     (classify-meaning #f meaning #f)]
     [_
      (Class 'application (cons operator operands))]))
 
 (define (classify sx context)
   (match sx
-    [(Rename meaning)
-     (Class 'rename meaning)]
-    [(? Expanded?)
+    [($$ (Rename meaning))
+     (classify-meaning #f meaning #f)]
+    [($$ (? Expanded?))
      (Class 'expanded sx)]
     [($$ (Symbol name))
      (define unbound (cons #f #f))
-     (classify-meaning (lookup-in-context name context (const unbound))
+     (classify-meaning name
+                       (lookup-in-context name context (const unbound))
                        unbound)]
     [($$ (and d (Dotted _ _)))
      (classify-meaning (resolve! d context) #f)]
@@ -538,6 +541,8 @@
     ;; atomic forms
     [(? self-expanding?)
      sx]
+    [(Class 'non-macro x)
+     x]
     [(Class '@ x)
      (if (in-synspaces? term-synspace context)
          (Spread-Argument (expand x context))
@@ -556,8 +561,9 @@
     ;; compound forms
     [(or (Class 'macro-call meaning)
          (Class 'primitive meaning))
-     (transform meaning sx context)]
-    [(Class 'declaration name)
+     (expand (transform meaning sx context)
+             context)]
+    [(Class 'declaration (cons name _))
      (error (format "Declaration ~A used out of context" name))]
     [(Class 'unbound-application (cons name operands))
      (combine (maybe-add! name) operands context)]
@@ -565,7 +571,7 @@
      (combine operator operands context)]))
 
 (define (expand-term term context)
-  (expand term #f (set-synspaces context (list term-synspace))))
+  (expand term (set-synspaces context (list term-synspace))))
 
 ;; expand s-expression in type synspace. if defining? is true
 ;; then this “type” is really part of a define/type etc. declaration,
@@ -580,7 +586,7 @@
 
 
 (define (expand-pattern pattern context)
-  (expand pattern term-synspace (set-synspaces context (list term-synspace))))
+  (expand pattern (set-synspaces context (list term-synspace))))
 
 ;; elaboration turns a body with only declarations into Let or Let-Recursive
 ;; around a Make-Record expression. this function evaluates this, and merges
@@ -751,8 +757,8 @@
   (Case e (map (λ (clause)
                  (define inner (new-scope context))
                  (match clause
-                   [(list ($ (PATTERN inner p))
-                          ($ (TERM inner e)))
+                   [($$ (List (list ($ (PATTERN inner p))
+                                    ($ (TERM inner e)))))
                     (list p e)]))
                clauses)))
 
@@ -1105,7 +1111,16 @@
 
 (define (test)
   (define context (Context (list term-synspace) 0 (primordial-environment) #f))
-  (bind-in-context! "if" (list term-synspace)
+  (bind-in-context! "True"
+                    (list term-synspace pattern-synspace)
+                    (Name "True" (list term-synspace pattern-synspace) #f)
+                    context)
+    (bind-in-context! "False"
+                    (list term-synspace pattern-synspace)
+                    (Name "False" (list term-synspace pattern-synspace) #f)
+                    context)
+  (bind-in-context! "if"
+                    (list term-synspace)
                     (Transformer (λ (s r c)
                                    (match s
                                      [($$ (List (list if p e1 e2)))

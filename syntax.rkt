@@ -3,8 +3,6 @@
 (require racket/struct
          "ast.rkt")
 
-(require racket/stxparam)
-
 (provide (all-defined-out))
 
 (struct Origin
@@ -33,8 +31,8 @@
 (define (traverse-symbols p s)
   (make-syntax (match (unwrap s)
                  [(List (list xs ...))
-                  (map (λ (x) (traverse-symbols p x))
-                       xs)]
+                  (List (map (λ (x) (traverse-symbols p x))
+                             xs))]
                  [(Symbol name)
                   (p s)]
                  [(At e)

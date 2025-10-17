@@ -47,7 +47,8 @@
   (synspaces ; current synspaces
    phase ; current phase
    environment ; current syntactic environment
-   add-unbound-synspace?))
+   add-unbound-synspace?)
+  #:transparent)
 
 ;;; expansion-time bindings
 
@@ -111,8 +112,8 @@
 
 ;; add new level of scope to context
 (define (new-scope context)
-  (with-context context (synspaces phase environment _)
-    (Context synspaces phase (add-frame environment))))
+  (with-context context (synspaces phase environment add-unbound-synspace?)
+    (Context synspaces phase (add-frame environment) add-unbound-synspace?)))
 
 ;; add synspace to current
 (define (add-synspace context synspace)
