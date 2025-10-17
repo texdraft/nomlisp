@@ -2,13 +2,6 @@
 
 (provide (all-defined-out))
 
-(struct Module
-  (name
-   body ; unexpanded syntax object
-   highest-phase ; integer
-   expanded ; AST or #f
-   elaborated)) ; AST (Record) or #f
-
 ;; Expansion
 
 ;; represents a “syntactic namespace”
@@ -31,8 +24,8 @@
   (make-hasheq))
 
 ;; make new empty phase vector, up to given phase
-(define (new-phase-vector [phases 1])
-  (make-vector phases #f))
+(define (new-phase-vector [maximum-phase 0])
+  (make-vector (+ maximum-phase 1) #f))
 
 (define (empty-syntactic)
   (Syntactic-Environment (list (new-frame))))
@@ -56,11 +49,15 @@
 (define (frame-get-phases! frame name synspace [maximum-phase 0])
   (define desired-length (+ maximum-phase 1))
   (define synspace-map (frame-get-synspace-map! frame name))
-  (define result (hash-ref synspace-map synspace))
+  (define result (hash-ref synspace-map synspace #f))
   (cond [(not result)
-         (hash-set! synspace-map synspace (new-phase-vector maximum-phase))]
+         (define v (new-phase-vector maximum-phase))
+         (hash-set! synspace-map synspace v)
+         v]
         [(< (vector-length result) desired-length)
-         (hash-set! synspace-map synspace (vector-extend result desired-length))]
+         (define v (vector-extend result desired-length))
+         (hash-set! synspace-map synspace v)
+         v]
         [else result]))
 
 ;; add binding to syntactic environment, given name and synspaces and phase
@@ -83,7 +80,8 @@
     #f))
 
 ;; look for binding in all frames, call continuation if not found
-(define (lookup-syntactic name phase synspaces se not-found)
+(define (lookup-syntactic name phase synspaces se [not-found unbound-error])
+  (fprintf "Looking for ")
   (let/ec found
     (for ([frame (in-frames se)])
       (define result (lookup-in-frame name phase synspaces frame))
@@ -91,6 +89,9 @@
           (found result)
           (void)))
     (not-found name phase synspaces)))
+
+(define (unbound-error name phase synspaces)
+  (error (format "~A is unbound" name)))
 
 ;; iteration abstractions
 (define (in-frames se)
@@ -121,13 +122,6 @@
                  (add-syntactic-binding! name phase (list synspace) meaning se)])
        bindings)
   se)
-
-;; create new environment where all bindings are taken from use-environment
-;; except for those mentioned in free-names, which are taken from
-;; captured-environment
-(define (merge-free-names use-environment captured-environment free-names)
-  (reconstruct-syntactic (map-bindings (λ (x) x)
-                                       use-environment)))
 
 ;; Elaboration
 

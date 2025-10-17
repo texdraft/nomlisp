@@ -8,44 +8,49 @@
 (provide (all-defined-out))
 
 (struct Origin
-  (line column)
+  (file line column from-macro?)
   #:transparent)
-
-(struct Free-Names
-  (synspaces)) ; list of (cons synspace name)
 
 (struct Syntax
   (form
-   syntactic-environment
-   free-names
    origin)
   #:methods gen:custom-write
   [(define (write-proc s out _)
-     (fprintf out "$~A" (~v (Syntax-form s))))])
+     (fprintf out "$~V" (Syntax-form s)))])
+
+(define (mark-macro-generated s)
+  (match s
+    [(Syntax form (Origin f l c _))
+     (Syntax form (Origin f l c #t))]))
 
 (define (unwrap s)
   (match s
-    [(Syntax form #f '() _)
+    [(Syntax form _)
      (unwrap form)]
     [else
      s]))
 
-(define (make-syntax form origin [environment #f] [free '()])
-  (Syntax form environment free origin))
+(define (traverse-symbols p s)
+  (make-syntax (match (unwrap s)
+                 [(List (list xs ...))
+                  (map (λ (x) (traverse-symbols p x))
+                       xs)]
+                 [(Symbol name)
+                  (p s)]
+                 [(At e)
+                  (At (traverse-symbols p e))]
+                 [(Left-Double-Arrow e)
+                  (Left-Double-Arrow (traverse-symbols p e))]
+                 [(Dotted e1 e2)
+                  (Dotted (traverse-symbols p e1)
+                          (traverse-symbols p e2))]
+                 [(or (Constant _)
+                      (Label _))
+                  (unwrap s)])
+               (Syntax-origin s)))
 
-(define (syntactic-closure? syntax)
-  (match syntax
-    [(Syntax _ (not #f) _ _)
-     #t]
-    [else
-     #f]))
-
-(define (make-syntactic-closure environment free expression [origin #f])
-  (match expression
-    [(Syntax expression´ #f (Free-Names '()) origin´)
-     (Syntax expression´ environment free (or origin origin´))]
-    [else
-     (Syntax expression environment free origin)]))
+(define (make-syntax form origin)
+  (Syntax form origin))
 
 (define opening-delimiter-table
    (hash #\u0028 #\u0029 ; {LEFT, RIGHT} PARENTHESIS

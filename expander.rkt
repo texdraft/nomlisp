@@ -4,87 +4,8 @@
          "ast.rkt"
          "evaluate.rkt"
          "elaborate.rkt"
-         "environments.rkt")
-
-(require racket/splicing)
-(require syntax/parse)
-(require syntax/parse/class/paren-shape)
-
-(struct Context
-  (synspaces ; current synspaces
-   phase ; current phase
-   environment)) ; current syntactic environment
-
-;; the meaning of a name defined with define/syntax, when the rhs
-;; is of type (→ Syntax Syntax)
-(struct Transformer
-  (procedure ; host-level procedure to do the expansion
-   syntactic-environment)) ; environment at point of definition
-
-;; the meaning of built-in things like define/module, case; as opposed
-;; to user macros, these turn syntax objects into ASTs
-(struct Primitive-Transformer
-  (procedure))
-
-(define macro-phase 0)
-
-(splicing-let-syntax ([define-synspace
-                        (syntax-rules ()
-                          [(_ name1 name2)
-                           (define name1 (Synspace name2))])])
-  ;; built-in synspaces
-  (define-synspace term-synspace "term")
-  (define-synspace type-synspace "type")
-  (define-synspace pattern-synspace "pattern")
-  (define-synspace module-synspace "module")
-  (define-synspace declaration-synspace "declaration")
-  (define-synspace synspace-synspace "synspace")
-  (define-synspace keyword-synspace "keyword"))
-
-;; helper to deconstruct context
-(define-syntax with-context
-  (syntax-rules ()
-    [(_ context (synspaces phase environment) . body)
-     (match-let ([(Context synspaces phase environment) context])
-       . body)]
-    [(_ context outer (synspaces phase environment) . body)
-     (match-let ([(Context synspaces phase environment) context])
-       (let ([outer (Context synspaces phase (outer-environment environment))])
-         . body))]))
-
-;; go up a level of scoping
-(define (outer-environment se)
-  (Syntactic-Environment (cdr (Syntactic-Environment-frames se))))
-
-;; bind name in current environment at current phase, given expander context
-(define (bind-in-context! name synspace meaning context)
-  (with-context context (_ phase environment)
-    (add-syntactic-binding! name synspace phase synspace meaning environment)))
-
-;; add new level of scope to context
-(define (new-scope context)
-  (with-context context (synspaces phase environment)
-    (Context synspaces phase (add-frame environment))))
-
-;; add synspace to current
-(define (add-synspace context synspace)
-  (struct-copy Context context
-               [synspaces (cons synspace (remq synspace (Context-synspaces context)))]))
-
-;; remove synspace from current
-(define (remove-synspace context synspace)
-  (struct-copy Context context
-               [synspaces (remq synspace (Context-synspaces context))]))
-
-;; replace synspaces
-(define (set-synspaces context synspaces)
-  (struct-copy Context context
-               [synspaces synspaces]))
-
-(define-match-expander $$
-  (syntax-rules ()
-    [(_ x)
-     (app unwrap x)]))
+         "environments.rkt"
+         "expander-support.rkt")
 
 (define-match-expander $
   (syntax-rules (TERM
@@ -105,6 +26,8 @@
      ($$ (At x))]
     [(_ ⇐ x)
      ($$ (Left-Double-Arrow x))]
+    [(_ (⇐ x))
+     ($$ (Left-Double-Arrow x))]
     [(_ (TERM context expanded))
      (app (λ (e) (expand-term e context)) expanded)]
     [(_ (TYPE context expanded))
@@ -112,20 +35,25 @@
     [(_ (PATTERN context expanded))
      (app (λ (e) (expand-pattern e context)) expanded)]
     [(_ (BIND! context synspace v))
-     (and (app unwrap (? Identifier?))
-          (app (match-λ [(Identifier name)
-                         (bind-in-context! name synspace context #t context)])
+     (and (app unwrap (? Symbol?))
+          (app (match-λ [(Symbol name)
+                         (bind-in-context! name
+                                           (list synspace)
+                                           context
+                                           (Name name)
+                                           context)])
                v))]
     [(_ (BIND-LIST! context synspace vs))
      (and (app unwrap (? List?))
           (app (match-λ [($$ (List (list* (and variables
                                                (? (λ (x)
-                                                    (Identifier? (unwrap x))))))))
+                                                    (Symbol? (unwrap x))))))))
                          (map (λ (v)
-                                (bind-in-context! (Identifier-name (unwrap v))
-                                                  synspace
+                                (define name (Symbol-name (unwrap v)))
+                                (bind-in-context! name
+                                                  (list synspace)
                                                   context
-                                                  #t
+                                                  (Name name synspace #f)
                                                   context)
                                 (unwrap v))
                               variables)])
@@ -141,50 +69,30 @@
     [(_ LABEL)
      ($$ (Label _))]
     [(_ ID)
-     ($$ (? Identifier?))]
+     ($$ (? Symbol?))]
     [(_ (ID name))
-     ($$ (Identifier name))]
+     ($$ (Symbol name))]
     [(_ COLON)
-     ($$ (Identifier ":"))]
+     ($$ (Symbol ":"))]
     [(_ (p ... (REST rest)))
-     (Syntax ($$ (List (list* ($ p) ... rest)))
-             _ _ _)]
+     (Syntax (or ($$ (List (list* ($ p) ... rest)))
+                 (list* ($ p) ... rest))
+             _)]
     [(_ (p ... (BODY context expanded)))
      (Syntax ($$ (List (list* ($ p) ... (app (λ (e) (expand-body e context)) expanded))))
-             _ _ _)]
+             _)]
     [(_ (p ...))
-     (Syntax ($$ (List (list ($ p) ...)))
-             _ _ _)]
+     (Syntax (or ($$ (List (list ($ p) ...)))
+                 (list ($ p) ...))
+             _)]
     [(_ p)
-     (or (Syntax ($$ p) _ _ _)
+     (or (Syntax ($$ p) _)
          p)]))
-
-(define-match-expander Sugar-Template
-  (syntax-rules ()
-    [(_)
-     (or (Prefixed _ _)
-         (Delimited _ _)
-         (Prefixed _ (Delimited _ '())))]))
-
-(define-syntax define-single-expander
-  (syntax-rules ()
-    [(_ (name pattern context) . body)
-     (define (name expression context)
-       (match expression
-         [pattern . body]))]))
-
-(define-syntax define-single-expander/inner
-  (syntax-rules ()
-    [(_ (name pattern context inner) . body)
-     (define (name expression context)
-       (define inner (new-scope context))
-       (match expression
-         [pattern . body]))]))
 
 (define (primordial-environment)
   (let ([e (empty-syntactic)])
     (define (add! name synspace p)
-      (add-syntactic-binding! name macro-phase synspace p e))
+      (add-syntactic-binding! name macro-phase (list synspace) p e))
     (define-syntax make-definers
       (syntax-rules ()
         [(_)
@@ -195,7 +103,9 @@
                     [(_)
                      (begin)]
                     [(_ name1 p1 . more)
-                     (begin (add! (symbol->string 'name1) synspace (Primitive-Transformer p1))
+                     (begin (add! (symbol->string 'name1)
+                                  synspace
+                                  (Primitive-Transformer p1 (symbol->string 'name1)))
                             (name! . more))]))
                 (make-definers . rest))]))
     (define-syntax keywords!
@@ -268,34 +178,393 @@
                :)
     e))
 
-;; expand s-expression in given context. if add-unbound-synspace? is #f,
-;; then an unbound identifier is considered an error; otherwise, the argument
-;; is the synspace in which new entries for unbound identifiers are made.
-(define (expand sx add-unbound-synspace? context)
-  (with-context context (synspaces phase environment)
-    (match sx
-      [(? syntactic-closure?)
-       4]
-      [($$ (Identifier name))
-       (match (lookup-syntactic name phase synspaces environment
-                                (λ (name _ __)
-                                  (if add-unbound-synspace?
-                                      (bind-in-context! name add-unbound-synspace? #t context)
-                                      (error "Unbound identifier"))))
-         [(Transformer p transformer-environment)
-          (expand (make-syntactic-closure transformer-environment '() (p sx environment))
-                  add-unbound-synspace?
-                  context)]
-         [(Primitive-Transformer p)
-          (p sx context)])]
-      [($$ (Dotted left right))
-       4]
-      [($$ (Label _))
-       (error "Label out of context")]
-      [($$ (and c (Constant _)))
-       c]
-      [($ @ _) (error "@ out of context")]
-      [($ ⇐ _) (error "⇐ out of context")])))
+(define (declaration-name? name)
+  (member name '("define/module"
+                 "define"
+                 "define/type"
+                 "define/class"
+                 "define/instance"
+                 "define/syntax"
+                 "define/sugar"
+                 "implicit"
+                 "import"
+                 "splice"
+                 "for-syntax"
+                 "declare")))
+
+(define (allowed-primitive? name context)
+  (or (and (in-synspaces? declaration-synspace context)
+           (declaration-name? name))
+      (and (in-synspaces? term-synspace context)
+           (member name '("λ"
+                          "the"
+                          "delimit"
+                          "capture-to"
+                          "begin"
+                          "quote"
+                          "record"
+                          "tuple"
+                          "case"
+                          "let"
+                          "letrec")))
+      (and (in-synspaces? type-synspace context)
+           (member name '("∀"
+                          "⇒"
+                          "record"
+                          "tuple")))
+      (and (in-synspaces? pattern-synspace context)
+           (member name '("as"
+                          "record"
+                          "tuple"
+                          "where")))))
+
+;; explicit renaming support
+
+(define (close-syntax s-expression context)
+  (traverse-symbols (match-λ [(Symbol name)
+                              (define result (lookup-in-context name context (const #f)))
+                              (if result
+                                  (Rename result)
+                                  (Symbol name))])
+                    s-expression))
+
+(define (make-rename context)
+  (λ (s-expression)
+    (close-syntax s-expression context)))
+
+(define (make-compare context)
+  (λ (i1 i2)
+    (match* ((close-syntax i1 context)
+             (close-syntax i2 context))
+      [((Rename m1) (Rename m2))
+       (eqv? m1 m2)]
+      [(_ _)
+       #f])))
+
+;; look for binding of name to module
+(define (lookup-module name context)
+  (with-context context (_ phase environment _)
+    (lookup-syntactic name
+                      phase
+                      (list module-synspace)
+                      environment)))
+
+(struct Import
+  (binding-name
+   external-name
+   synspace
+   for-syntax?))
+
+(define (ported-name-import ported synspace for-syntax?)
+  (match ported
+    [($ ((ID "rename") (ID external) (ID binding)))
+     (list (Import binding external synspace for-syntax?))]
+    [($ (ID name))
+     (list (Import name name synspace for-syntax?))]))
+
+(define (compute-imported-bindings import)
+  (match import
+    [($ ((ID "module") m))
+     (ported-name-import m module-synspace #f)]
+    [($ ((ID "type") t))
+     (ported-name-import t type-synspace #f)]
+    [($ ((ID "class") c))
+     (ported-name-import c type-synspace #f)]
+    [($ ((ID "instance") i))
+     (ported-name-import i type-synspace #f)]
+    [($ ((ID "pattern") p))
+     (ported-name-import p pattern-synspace #f)]
+    [($ ((ID "syntax") ports))
+     (flatten (map (λ (port)
+                     (match port
+                       [($ ((ID synspace) (REST ps)))
+                        (map (λ (p)
+                               (ported-name-import p synspace #t))
+                             ps)]
+                       [($ (synspaces (REST ps)))
+                        (map (λ (synspace)
+                               (map (λ (p)
+                                      (ported-name-import p synspace #t))
+                                    ps)))]))
+                   ports))]
+    [_
+     (ported-name-import import term-synspace #f)]))
+
+(define ((make-filter except?) module imports)
+  (define imported (append-map compute-imported-bindings imports))
+  (λ (internal-name external-name1 synspace1 for-syntax?1)
+    (let ([found (findf (match-λ [(Import _ external-name2 synspace2 for-syntax?2)
+                                  (and (equal? external-name1 external-name2)
+                                       (eqv? synspace1 synspace2)
+                                       (equal? for-syntax?1 for-syntax?2))]))])
+      (if (if except?
+              found
+              (not found))
+          (values (Import-binding-name found)
+                  (with-context (Module-context module) (synspaces phase environment _)
+                    (lookup-syntactic internal-name
+                                      (if for-syntax?1
+                                          (+ phase 1)
+                                          phase)
+                                      synspaces
+                                      environment)))
+          (values #f #f)))))
+
+(define from-filter
+  (make-filter #f))
+
+(define except-filter
+  (make-filter #t))
+
+;; perform an import by mutating the context
+(define (do-import! import context prefix? for-syntax?)
+  (with-context context (synspaces phase environment _)
+    (match import
+      [($ ((ID "for-syntax") (REST imports)))
+       (map (λ (i)
+              (do-import! i (shifted-context context) prefix?))
+            imports)]
+      [($ ((ID "prefix") (Symbol prefix) import))
+       (when prefix?
+         (error "Already have a prefix"))
+       (do-import! import context prefix)]
+      [($ ((ID "from") (ID module-name) (REST imports)))
+       (define module (lookup-module module-name context))
+       (import-module! module
+                       (from-filter module imports)
+                       prefix?
+                       for-syntax?
+                       context)]
+      [($ ((ID "except" (ID module-name) (REST imports))))
+       (define module (lookup-module module-name context))
+       (import-module! module
+                       (except-filter module imports)
+                       prefix?
+                       for-syntax?
+                       context)])))
+
+(define (ensure-expanded-module! module)
+  (match module
+    [(Module exports
+             unexpanded-body
+             expanded-body
+             inner)
+     (unless expanded-body
+       (set-Module-expanded-body! (expand-body unexpanded-body inner #t))
+       (check-exports module))]))
+
+;; when doing define/module, we add the module binding, which holds the export
+;; list, *before* the body is expanded. as a result, we can't check whether
+;; the export list is valid until later.
+
+(define (check-exports module)
+  (match module
+    [(Module exports _ _ inner)
+     (with-context inner (_ phase environment _)
+       (for ([export exports])
+         (match export
+           [(Export external-name
+                    internal-name
+                    synspace
+                    for-syntax?)
+            (lookup-syntactic internal-name
+                              (if for-syntax?
+                                  (+ phase 1)
+                                  phase)
+                              (list synspace)
+                              environment)])))]))
+
+;; import all bindings exported from a module, applying filter to each one.
+;; if filter returns false, the binding is omitted, otherwise filter should
+;; return a name and a meaning to add to the environment.
+(define (import-module! module context filter prefix? for-syntax?)
+  (with-context context (_ phase environment _)
+    (define (maybe-prefix name)
+      (if prefix?
+          (format "~A~A" prefix? name)
+          name))
+    (match module
+      [(Module exports
+               unexpanded-body
+               expanded-body
+               inner)
+       (ensure-expanded-module! module)
+       (for ([export exports])
+         (match export
+           [(Export external-name
+                    internal-name
+                    synspace
+                    for-syntax?)
+            (define-values (name meaning) (filter internal-name
+                                                  external-name
+                                                  synspace
+                                                  for-syntax?))
+            (when name
+              (add-syntactic-binding! (maybe-prefix name)
+                                      (if for-syntax?
+                                          (+ phase 1)
+                                          phase)
+                                      (list synspace)
+                                      meaning
+                                      environment))]))])))
+
+;; resolve dotted name to binding referred to
+(define (resolve! dotted context)
+  (match (unwrap dotted)
+    [(Dotted ($ (ID module)) ($$ x))
+     (define inner (new-scope context))
+     (import-module! (lookup-module module context)
+                     inner)
+     (match x
+       [(Dotted _ _)
+        (resolve! x inner)]
+       [(Symbol name)
+        (lookup-in-context name inner)])]))
+
+;;; NB: all expansion functions are inherently destructive; they mutate the
+;;; environment to add bindings. I don't mark their names with ! because it's
+;;; not really helpful when reading the code.
+
+(define (transform meaning sx context)
+  (match meaning
+    [(Transformer p context)
+     (define output (p sx
+                       (make-rename context)
+                       (make-compare context)))
+     (pretty-print output)
+     (close-syntax (mark-macro-generated output)
+                   context)]
+    [(Primitive-Transformer p n)
+     (if (allowed-primitive? p context)
+         (p sx context)
+         (error (format "Primitive operator ~A used out of context" n)))]))
+
+(struct Class
+  (type
+   info)
+  #:transparent)
+
+(define (classify-meaning meaning unbound)
+  (match meaning
+    [(? Transformer?)
+     (Class 'macro-id meaning)]
+    [(Primitive-Transformer _ name)
+     (Class 'primitive-id meaning name)]
+    [(External _ _)
+     (Class 'external meaning)]
+    [(Name _ _ _)
+     (Class 'non-macro meaning)]
+    [_
+     (if (eqv? meaning unbound)
+         (Class 'unbound #f)
+         (Class 'random meaning))]))
+
+(define (classify-combination operator-classification operator operands)
+  (match operator-classification
+    [(Class 'macro-id meaning)
+     (Class 'macro-call meaning)]
+    [(Class 'primitive-id (cons name meaning))
+     (if (declaration-name? name)
+         (Class 'declaration (cons name meaning))
+         (Class 'primitive meaning))]
+    [(Class 'unbound name)
+     (Class 'unbound-application (cons name operands))]
+    [_
+     (Class 'application (cons operator operands))]))
+
+(define (classify sx context)
+  (define result (classify2 sx context))
+  (print result)
+  result)
+
+(define (classify2 sx context)
+  (match sx
+    [(Rename meaning)
+     (Class 'rename meaning)]
+    [(? Expanded?)
+     (Class 'expanded sx)]
+    [($$ (Symbol name))
+     (define unbound (cons #f #f))
+     (classify-meaning (lookup-in-context name context (const unbound))
+                       unbound)]
+    [($$ (and d (Dotted _ _)))
+     (classify-meaning (resolve! d context) #f)]
+    [($$ (List (list* ($$ operator) operands)))
+     (classify-combination (classify operator context)
+                           operator
+                           operands)]
+    [($$ (and c (Constant _)))
+     (Class 'constant c)]
+    [($$ (and l (Label _)))
+     (Class 'label l)]
+    [($ @ x)
+     (Class '@ x)]
+    [($ ⇐ x)
+     (Class '⇐ x)]))
+
+(define (self-expanding? class)
+  (match class
+    [(or (Class 'expanded _)
+         (Class 'constant _)
+         (Class 'label _)
+         (Class 'random _))
+     #t]
+    [_
+     #f]))
+
+(define (unbound-error/context name context)
+  (with-context context (synspaces phase _ _)
+    (unbound-error name phase synspaces)))
+
+(define (combine operator operands context)
+  (define (make c)
+    (c (expand operator context)
+       (expand-list operands context)))
+  (do-first-synspace context
+                     #:term (make Call)
+                     #:type (make Type-Application)
+                     #:pattern (make Constructor-Pattern)))
+
+;; expand s-expression in given context
+(define (expand sx context)
+  (pretty-print sx)
+  (define add-unbound-synspace? (Context-add-unbound-synspace? context))
+  (define (maybe-add! name)
+    (if add-unbound-synspace?
+        (bind-in-context! name
+                          (list add-unbound-synspace?)
+                          (Name name add-unbound-synspace? #f)
+                          context)
+        (unbound-error/context name context)))
+  (match (classify sx context)
+    ;; atomic forms
+    [(? self-expanding?)
+     sx]
+    [(Class '@ x)
+     (if (in-synspaces? term-synspace context)
+         (Spread-Argument (expand x context))
+         (error "@ used out of context"))]
+    [(Class '⇐ x)
+     (if (or (in-synspaces? term-synspace context)
+             (in-synspaces? type-synspace context))
+         (Instance-Supply (expand-type x add-unbound-synspace? context))
+         (error "⇐ used out of context"))]
+    [(Class 'unbound name)
+     (maybe-add! name)]
+    [(Class 'macro-id meaning)
+     (transform meaning sx context)]
+    [(Class 'primitive-id name)
+     (error (format "Primitive ~A used out of context" name))]
+    ;; compound forms
+    [(or (Class 'macro-call meaning)
+         (Class 'primitive meaning))
+     (transform meaning sx context)]
+    [(Class 'declaration name)
+     (error (format "Declaration ~A used out of context" name))]
+    [(Class 'unbound-application (cons name operands))
+     (combine (maybe-add! name) operands context)]
+    [(Class 'application (cons operator operands))
+     (combine operator operands context)]))
 
 (define (expand-term term context)
   (expand term #f (set-synspaces context (list term-synspace))))
@@ -304,12 +573,111 @@
 ;; then this “type” is really part of a define/type etc. declaration,
 ;; so we're gonna be adding new entries for all undefined identifiers.
 (define (expand-type type defining? context)
-  (expand type (set-synspaces context (list type-synspace))))
+  (with-context (set-synspaces context (list type-synspace)) (synspaces
+                                                              phase
+                                                              environment
+                                                              _)
+    (expand type
+            (Context synspaces phase environment (and defining? type-synspace)))))
+
 
 (define (expand-pattern pattern context)
   (expand pattern term-synspace (set-synspaces context (list term-synspace))))
 
-(define (expand-body) 4)
+;; elaboration turns a body with only declarations into Let or Let-Recursive
+;; around a Make-Record expression. this function evaluates this, and merges
+;; the “bindings” embodied by the resulting record object into the syntactic
+;; environment
+(define (evaluate-for-syntax elaborated evaluation-context shifted-context)
+  (define record (evaluate elaborated evaluation-context))
+  (define (get-name label)
+    (match label
+      [(Label name)
+       name]))
+  (for ([(label value) record])
+    (bind-in-context! (get-name label)
+                      (list term-synspace)
+                      value
+                      shifted-context)))
+
+(define (grab-runtime-values context)
+  (runtime-environment-from-association-list
+   (map (match-λ [(list meaning name _ _)
+                  (cons name meaning)])
+        (filter-bindings (λ (meaning name synspace phase)
+                           (and (= phase (+ (Context-phase context) 1))
+                                (eqv? synspace term-synspace)))
+                         (Context-environment context)))))
+
+(define (preprocess-body body inner module?)
+  (define elaboration-context (empty-elaboration-context))
+  (define evaluation-context (grab-runtime-values (outer-context inner)))
+  (let loop ([items (match body
+                      [($$ (List l))
+                       l]
+                      [(list* l)
+                       body])]
+             [declarations '()])
+    (if (null? items)
+        (if module?
+            (values declarations items)
+            (error "Body can't have only declarations"))
+        (let ([item (car items)])
+          (match (classify (car items) inner)
+            [(Class 'declaration (cons "define/syntax" _))
+             (match item
+               [($ (define/syntax (ID name) ((REST ($$ synspaces))) (REST body)))
+                (define shifted (shifted-context inner))
+                (define expanded (expand-body body shifted))
+                (define elaborated (elaborate/transformer? expanded elaboration-context))
+                (define value (evaluate elaborated evaluation-context))
+                (bind-in-context!
+                 name
+                 (map (λ (name)
+                        (lookup-in-context name
+                                           (set-synspaces inner
+                                                          (list synspace-synspace))))
+                      synspaces)
+                 (Transformer value inner)
+                 inner) ; bind at current phase
+                (loop (cdr items) declarations)])]
+            [(Class 'declaration (cons "define/sugar" _))
+             (error "Sugar not implemented yet")]
+            [(Class 'declaration (cons "for-syntax" _))
+             (match (car items)
+               [($ (for-syntax (REST declarations)))
+                (define shifted (shifted-context inner))
+                (define expanded (Body (expand-list declarations
+                                                    #f
+                                                    (set-synspaces shifted
+                                                                   (list declaration-synspace)))
+                                       '()))
+                (define elaborated (elaborate/body expanded elaboration-context))
+                (evaluate-for-syntax elaborated evaluation-context shifted)
+                (loop (cdr items) declarations)])]
+            [(Class 'declaration (cons "splice" _))
+             (match item
+               [($ (splice (REST declarations)))
+                (loop (append declarations items) declarations)])]
+            [(Class 'declaration (cons "import" expander))
+             (expander item 'binding inner)
+             (loop (cdr items) declarations)]
+            [(Class 'declaration (cons name expander))
+             (expander item 'binding inner)
+             (loop (cdr items) (cons (cons expander item)
+                                     declarations))]
+            [_
+             (values declarations items)])))))
+
+(define (expand-body body context [module? #f])
+  (define inner (new-scope (add-synspace (add-synspace context term-synspace)
+                                         declaration-synspace)))
+  (let-values ([(declarations expressions) (preprocess-body body inner module?)])
+    (Body (map (match-λ [(cons p d)
+                         (p d 'expanding inner)])
+               declarations)
+          (expand-list expressions #f inner))))
+
 (define (expand-parameter parameter context)
   (match parameter
     [($ @ ($ (BIND! context term-synspace v)))
@@ -360,10 +728,20 @@
 (define (expand-quote expression context)
   (Quote expression))
 
-(define (expand-record-expression expression context)
-  (with-context context (synspaces phase environment)
-    (match expression
-      )))
+(define-single-expander (expand-record-expression ($ (record (REST fields+row))) context)
+  (let loop ([stuff (match fields+row
+                      [($$ (List l))
+                       l])]
+             [fields+values '()])
+    (match stuff
+      [(list)
+       (Make-Record (reverse fields+values) #f)]
+      [(list row)
+       (Make-Record (reverse fields+values) (expand row context))]
+      [(list ($$ (Label l)) x rest ...)
+       (loop rest
+             (cons (cons (Label l) (expand x context))
+                   fields+values))])))
 
 (define-single-expander (expand-tuple-expression ($ (tuple (REST vs)))
                                                  context)
@@ -409,10 +787,38 @@
   (For-All vs t))
 
 (define-single-expander (expand-⇒ ($ (⇒ (REST constraints+type))) context)
-  4)
+  (let loop ([stuff (match constraints+type
+                      [($$ (List l))
+                       l])]
+             [constraints '()])
+    (match stuff
+      [(list type)
+       (Constrained constraints (expand type context))]
+      [(list ($$ (Symbol instance)) ($ COLON) type rest ...)
+       (define name (Name instance type-synspace #f))
+       (bind-in-context! instance (list type-synspace) name context)
+       (loop rest
+             (cons (Constraint name (expand type context))
+                   constraints))]
+      [(list type rest ...)
+       (loop rest
+             (cons (Constraint #f (expand type context))
+                   constraints))])))
 
 (define-single-expander (expand-record-type ($ (record (REST fields+row))) context)
-  4)
+  (let loop ([stuff (match fields+row
+                      [($$ (List l))
+                       l])]
+             [fields+types '()])
+    (match stuff
+      [(list)
+       (Record-Type (reverse fields+types) #f)]
+      [(list row)
+       (Record-Type (reverse fields+types) (expand row context))]
+      [(list ($$ (Label l)) x rest ...)
+       (loop rest
+             (cons (cons (Label l) (expand x context))
+                   fields+types))])))
 
 (define-single-expander (expand-tuple-type ($ (tuple (REST ($ (TYPE context ts)))))
                                            context)
@@ -424,7 +830,26 @@
   (As v p))
 
 (define-single-expander (expand-record-pattern ($ (record (REST fields+row))) context)
-  4)
+  (let loop ([stuff (match fields+row
+                      [($$ (List l))
+                       l])]
+             [fields+patterns '()])
+    (match stuff
+      [(or (list ($$ (Label l)))
+           (list ($$ (Label l)) ($$ (Label _)) _ ...))
+       (define name (Name l term-synspace #f))
+       (bind-in-context! l (list term-synspace) name context)
+       (loop (cdr stuff)
+             (cons (cons (Label l)
+                         name)))]
+      [(list)
+       (Record-Pattern (reverse fields+patterns) #f)]
+      [(list ($$ row))
+       (Record-Pattern (reverse fields+patterns) (expand row context))]
+      [(list ($$ (Label l)) ($$ pattern) rest ...)
+       (loop rest
+             (cons (cons (Label l) (expand pattern context))
+                   fields+patterns))])))
 
 (define-single-expander (expand-tuple-pattern ($ (tuple (REST ($ (PATTERN context ps)))))
                                               context)
@@ -436,42 +861,254 @@
                                       context)
   (Where p (map list ps ts)))
 
-;; the declaration expanders do not need to add whatever the declaration is
-;; defining to the environment; it will have already been done
+;; the mode argument in the declaration expanders can be one of two values:
+;; * 'binding means that we're just binding names (by mutating the context)
+;; * 'expanding means that we're actually expanding to an AST
 
-(define (expand-define/module expression context)
-  4)
+(define (parse-exports exports prefix for-syntax?)
+  (flatten (map parse-export exports)))
 
-(define (expand-define expression context)
-  4)
+(define (exported-name name synspace prefix? for-syntax?)
+  (define (maybe-prefix name)
+    (if prefix?
+        (format "~A~A" prefix? name)
+        name))
+  (match name
+    [($ ((ID "rename") internal-name external-name))
+     (Export (maybe-prefix external-name) internal-name synspace for-syntax?)]
+    [($$ (Symbol internal-name))
+     (Export (maybe-prefix internal-name) internal-name synspace for-syntax?)]))
 
-(define (expand-define/type expression context)
-  4)
+(define (parse-export export prefix? for-syntax?)
+  (match export
+    [($ ((ID "syntax") (REST exports)))
+     (flatten (map (λ (port)
+                     (match port
+                       [($ ((ID synspace) (REST ps)))
+                        (map (λ (p)
+                               (exported-name p synspace prefix? for-syntax?))
+                             ps)]
+                       [($ (((REST synspaces)) (REST ps)))
+                        (map (λ (synspace)
+                               (map (λ (p)
+                                      (exported-name p synspace prefix? for-syntax?))
+                                    ps))
+                             (unwrap synspaces))]))
+                   exports))
+     (parse-exports exports prefix? for-syntax?)]
+    [($ ((ID "and") (REST exports)))
+     (parse-exports exports prefix? for-syntax?)]
+    [($ ((ID "for-syntax") (REST exports)))
+     (parse-exports exports prefix? #t)]
+    [($ ((ID "prefix") (ID name) (REST exports)))
+     (parse-exports exports name for-syntax?)]
+    [($ ((ID "module") name))
+     (exported-name name module-synspace prefix? for-syntax?)]
+    [(or ($ ((ID "type") name))
+         ($ ((ID "class") name))
+         ($ ((ID "instance") name)))
+     (exported-name name type-synspace prefix? for-syntax?)]
+    [($ ((ID "pattern") name))
+     (exported-name name pattern-synspace prefix? for-syntax?)]
+    [_
+     (exported-name export term-synspace prefix? for-syntax?)]))
 
-(define (expand-define/class expression context)
-  4)
+(define (expand-define/module expression mode context)
+  (match expression
+    [($ (define/module (ID name) exports (REST body)))
+     (case mode
+       [(binding)
+        (bind-in-context! name
+                          (list module-synspace)
+                          (Module (parse-exports exports)
+                                  body
+                                  #f
+                                  context)
+                          context)]
+       [(expanding)
+        (define module (lookup-module name context))
+        (match module
+          [(Module exports _ expanded-body _)
+           (Define-Module (Name name) exports (cond [expanded-body]
+                                                    [else
+                                                     (ensure-expanded-module! module)]))])])]))
 
-(define (expand-define/instance expression context)
-  4)
+(define (expand-define expression mode context)
+  (define inner (new-scope context))
+  (define (bind/expand name type body)
+    (case mode
+      [(binding)
+       (bind-in-context! name (list term-synspace) (Name name) context)]
+      [(expanding)
+       (Define (lookup-in-context name (set-synspaces context (list term-synspace)))
+               (if type
+                   (expand-type type #f context)
+                   #f)
+               (if (Expanded? body)
+                   body
+                   (expand-body body inner)))]))
+  (define (make-lambda parameters type body context)
+    (Lambda (map (λ (parameter)
+                   (expand-parameter parameter context))
+                 parameters)
+            type
+            (expand-body body context)))
+  (match expression
+    [($ (define_ (ID name) COLON type (REST body)))
+     (bind/expand name type body)]
+    [($ (define_ (ID name) (REST body)))
+     (bind/expand name #f body)]
+    [($ (define_ ((ID name) (REST parameters)) COLON type (REST body)))
+     (define inner (new-scope context))
+     (bind/expand name type (make-lambda parameters type body inner))]
+    [($ (define_ ((ID name) (REST parameters)) (REST body)))
+     (bind/expand name #f (make-lambda parameters #f body inner))]))
 
-(define (expand-define/syntax expression context)
-  4)
+(define (parse-namething namething context inner)
+  (match namething
+    [($ ((ID "⇒") (REST (list constraints ... type))))
+     (define expanded-constraints (expand-list constraints
+                                               (set-synspaces inner (list type-synspace))))
+     (define-values (name _) (parse-defining-type-name type context inner))
+     (values name (Constrained expanded-constraints (expand-type type #f context)))]
+    [($ ((ID "∀") ((REST parameters)) type))
+     (define parameters (expand-type-parameters parameters inner))
+     (define-values (name expanded) (parse-defining-type-name type context inner))
+     (values name (For-All parameters expanded))]
+    [($ (ID name))
+     (define the-name (Name name))
+     (bind-in-context! name (list type-synspace) the-name context)
+     (values name the-name)]
+    [($ (type (⇐ type2)))
+     (define-values (name expanded) (parse-defining-type-name type context inner))
+     (values name (Type-Application expanded (Instance-Supply (expand-type type2 #f context))))]
+    [($ (type type2))
+     (define-values (name expanded) (parse-defining-type-name type context inner))
+     (values name (Type-Application expanded (expand-type type2 #t context)))]
+    [($ (type (REST _)))
+     (parse-defining-type-name (curryify namething)
+                               context
+                               inner)]))
 
-(define (expand-define/sugar expression context)
-  4)
+(define (curryify application)
+  (match application
+    [(list f x)
+     application]
+    [(list f x y rest ...)
+     (let loop ([curried #f]
+                [remaining application])
+       (if (null? remaining)
+           curried
+           (loop (list curried (car remaining))
+                 (cdr remaining))))]))
 
-(define (expand-implicit expression context)
-  4)
+(define (expand-type-parameters parameters context)
+  (let loop ([parameters parameters]
+             [expanded '()])
+    (match parameters
+      [(list)
+       (reverse expanded)]
+      [(list type)
+       (loop (cdr parameters)
+             (cons (expand-type type #t context)
+                   expanded))]
+      [(list ($$ (Symbol type-parameter)) ($ COLON) type rest ...)
+       (define name (Name type-parameter type-synspace #f))
+       (bind-in-context! type-parameter name (set-synspaces context (list type-synspace)))
+       (loop rest
+             (cons (Annotated name (expand-type type #t context))
+                   expanded))]
+      [(list type rest ...)
+       (loop rest
+             (cons (Constraint #f (expand type context))
+                   expanded))])))
 
-(define (expand-import expression context)
-  4)
+(define (parse-defining-type-name namething context inner)
+  (let ([context (struct-copy Context (set-synspaces (list type-synspace) context)
+                              (add-unbound-synspace? type-synspace))])
+    (parse-namething namething context inner)))
 
-(define (expand-splice expression context)
-  4)
+(define (expand-define/type expression mode context)
+  (match expression
+    [($ (define/type namething synonym))
+     (case mode
+       [(binding)
+        (parse-defining-type-name namething context (new-scope context))]
+       [(expanding)
+        (define inner (new-scope context))
+        (define-values (name etc.) (parse-defining-type-name namething context inner))
+        (Define-Type name etc. (expand-type synonym #f inner))])]
+    [($ (define/type namething (REST (and rest ($ (n1 COLON t1 (REST _)))))))
+     4]
+    [($ (define/type namething (REST (and rest ($ (e1 e2 (REST _)))))))
+     4]))
 
-(define (expand-for-syntax expression context)
-  4)
+(define (expand-define/class expression mode context)
+  (match expression
+    [($ (define/class namething (REST body)))
+     (case mode
+       [(binding)
+        (define expanded (expand-type namething #t context))
+        4]
+       [(expanding)
+        4])]))
 
-(define (expand-declare expression context)
-  4)
+(define (expand-define/instance expression mode context)
+  (match expression
+    [($ (define/instance (ID name) ($ constraint) (REST body)))
+     (case mode
+       [(binding)
+        (bind-in-context! name (list type-synspace) (Name name) context)]
+       [(expanding)
+        (define inner (new-scope context))
+        (Define-Instance (lookup-in-context name (set-synspaces context (list term-synspace)))
+                         (expand-type constraint #f inner)
+                         (expand-list body (set-synspaces inner (list declaration-synspace))))])]))
 
+(define (expand-declare expression mode context)
+  (match expression
+    [($ (declare (REST metadata)))
+     (Declare metadata)]))
+
+(define (expand-import expression mode context)
+  (match expression
+    [($ (import (REST imported)))
+     (when (eqv? mode 'expanding)
+       (error "Internal error: import should bind only"))]))
+
+(define (expand-implicit expression mode context)
+  (match expression
+    [($ (implicit (REST types)))
+     (when (eqv? mode 'expanding)
+       (Implicit (expand-list types (set-synspaces context (list type-synspace)))))]))
+
+(define (bad-declaration name context)
+  (error "Internal error: ~A shouldn't be handled like this"))
+
+(define-syntax-rule (define-bad name operator)
+  (define (name expression mode context)
+    (bad-declaration 'operator context)))
+
+(define-bad expand-define/syntax define/syntax)
+(define-bad expand-define/sugar define/sugar)
+(define-bad expand-splice splice)
+(define-bad expand-for-syntax for-syntax)
+
+(define (test)
+  (define context (Context '(term-synspace) 0 (primordial-environment) #f))
+  (bind-in-context! "if" (list term-synspace)
+                    (Transformer (λ (s r c)
+                                   (match s
+                                     [($ (if p e1 e2))
+                                      (make-syntax (List (list (r (Symbol "case"))
+                                                               p
+                                                               (List (list (r (Symbol "True"))
+                                                                           e1))
+                                                               (List (list (r (Symbol "False"))
+                                                                           e1)))))]))
+                                 context)
+                    context)
+  (expand (List (list (Symbol "if") (Constant 1) (Constant 2)))
+          context))
+
+(print (test))

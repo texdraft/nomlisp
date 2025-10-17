@@ -199,7 +199,7 @@
       [(? eof-object?)
        eof]
       [(Token 'identifier data origin)
-       (define identifier (make-syntax (Identifier data) origin))
+       (define identifier (make-syntax (Symbol data) origin))
        (define dot? (next!))
        (match dot?
          [(Token '\. _ _)
