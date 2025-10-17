@@ -92,8 +92,7 @@
 (define (primordial-environment)
   (let ([e (empty-syntactic)])
     (define (add! name synspace p)
-      (add-syntactic-binding! name macro-phase (list synspace) p e)
-      (pretty-print e))
+      (add-syntactic-binding! name macro-phase (list synspace) p e))
     (define-syntax make-definers
       (syntax-rules ()
         [(_)
@@ -435,11 +434,9 @@
 (define (transform meaning sx context)
   (match meaning
     [(Transformer p context)
-     (define output (p sx
-                       (make-rename context)
-                       (make-compare context)))
-     (pretty-print output)
-     (close-syntax (mark-macro-generated output)
+     (close-syntax (mark-macro-generated (p sx
+                                            (make-rename context)
+                                            (make-compare context)))
                    context)]
     [(Primitive-Transformer p n)
      (if (allowed-primitive? p context)
@@ -481,7 +478,6 @@
 
 (define (classify sx context)
   (define result (classify2 sx context))
-  (print result)
   result)
 
 (define (classify2 sx context)
@@ -534,7 +530,6 @@
 
 ;; expand s-expression in given context
 (define (expand sx context)
-  (pretty-print sx)
   (define add-unbound-synspace? (Context-add-unbound-synspace? context))
   (define (maybe-add! name)
     (if add-unbound-synspace?
@@ -1128,5 +1123,3 @@
                     context)
   (expand (to-syntax '(if 1 2 3))
           context))
-
-(print (test))

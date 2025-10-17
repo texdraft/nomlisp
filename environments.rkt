@@ -55,7 +55,6 @@
   (cond [(not result)
          (define v (new-phase-vector maximum-phase))
          (hash-set! synspace-map synspace v)
-         (printf "frame-get-phases: synspace map afterwards: ~A" synspace-map)
          v]
         [(< (vector-length result) desired-length)
          (define v (vector-extend result desired-length))
@@ -65,23 +64,18 @@
 
 ;; add binding to syntactic environment, given name and synspaces and phase
 (define (add-syntactic-binding! name phase synspaces meaning se)
-  (printf "I'm adding ~A~%" name)
   (let ([frame (most-recent-frame se)])
     (if (lookup-in-frame name phase synspaces frame)
         (error "Redefinition prohibited in the same scope")
         (for ([synspace synspaces])
           (let ([phases (frame-get-phases! frame name synspace phase)])
-            (printf "  synspace map after2: ~A~%" (frame-get-synspace-map! frame name))
-            (printf "  in ~A~%" phases)
-            (vector-set! phases phase meaning)
-            (printf "  phase vector after: ~A~%" phases)))))
+            (vector-set! phases phase meaning)))))
   meaning)
 
 ;; look for binding in one frame, return #f if not found
 (define (lookup-in-frame name phase synspaces frame)
   (let/ec found
     (for ([synspace synspaces])
-      (printf "  in frame, meanings: ~A~%" (frame-get-phases! frame name synspace phase))
       (define result (vector-ref (frame-get-phases! frame name synspace phase)
                                  phase))
       (found result))
@@ -89,7 +83,6 @@
 
 ;; look for binding in all frames, call continuation if not found
 (define (lookup-syntactic name phase synspaces se [not-found unbound-error])
-  (printf "Looking for ~A in ~A at ~A…~%" name synspaces phase)
   (let/ec found
     (for ([frame (in-frames se)])
       (define result (lookup-in-frame name phase synspaces frame))
