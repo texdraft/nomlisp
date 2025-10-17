@@ -16,7 +16,7 @@
    origin)
   #:methods gen:custom-write
   [(define (write-proc s out _)
-     (fprintf out "$~A" (Syntax-form s)))])
+     (fprintf out "$~V" (Syntax-form s)))])
 
 (define (mark-macro-generated s)
   (match s
