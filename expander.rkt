@@ -477,10 +477,6 @@
      (Class 'application (cons operator operands))]))
 
 (define (classify sx context)
-  (define result (classify2 sx context))
-  result)
-
-(define (classify2 sx context)
   (match sx
     [(Rename meaning)
      (Class 'rename meaning)]
