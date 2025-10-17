@@ -91,6 +91,8 @@
   (match grammar
     [`(grammar ,items ...)
      `(html (head (meta [[charset "UTF-8"]])
+                  (meta [[name "viewport"]
+                         [content "width=device-width, initial-scale=1, user-scalable=1"]])
                   (title "Nomlisp grammar")
                   (link [[rel "stylesheet"]
                          [href "gram.css"]])
@@ -127,8 +129,8 @@
                  (cons `(section (,(heading-symbol level) ,name)
                                  ,@(pretty-items stuff (+ level 1) nonterminals))
                        translated))]
-          [`((rule . ,_) . ,rest)
-           (let inner ([items rest]
+          [`((rule . ,_) . ,_)
+           (let inner ([items items]
                        [rules '()])
              (match items
                [(or (list)
