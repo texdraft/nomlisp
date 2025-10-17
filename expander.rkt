@@ -92,7 +92,8 @@
 (define (primordial-environment)
   (let ([e (empty-syntactic)])
     (define (add! name synspace p)
-      (add-syntactic-binding! name macro-phase (list synspace) p e))
+      (add-syntactic-binding! name macro-phase (list synspace) p e)
+      (pretty-print e))
     (define-syntax make-definers
       (syntax-rules ()
         [(_)
@@ -114,11 +115,17 @@
          (begin)]
         [(_ name . rest)
          (begin (add! (symbol->string 'name) keyword-synspace 'keyword))]))
+    (define-syntax synspaces!
+      (syntax-rules ()
+        [(_)
+         (begin)]
+        [(_ name1 p1 . more)
+         (begin (add! (symbol->string 'name1) synspace-synspace p1)
+                (synspaces! . more))]))
     (make-definers terms! term-synspace
                    types! type-synspace
                    patterns! pattern-synspace
-                   declarations! declaration-synspace
-                   synspaces! synspace-synspace)
+                   declarations! declaration-synspace)
     (terms! λ expand-λ
             the expand-the
             delimit expand-delimit
@@ -221,7 +228,7 @@
 ;; explicit renaming support
 
 (define (close-syntax s-expression context)
-  (traverse-symbols (match-λ [(Symbol name)
+  (traverse-symbols (match-λ [($$ (Symbol name))
                               (define result (lookup-in-context name context (const #f)))
                               (if result
                                   (Rename result)
@@ -1094,21 +1101,32 @@
 (define-bad expand-splice splice)
 (define-bad expand-for-syntax for-syntax)
 
+(define (to-syntax x)
+  (match x
+    [(? symbol?)
+     (make-syntax (Symbol (symbol->string x)) (Origin #f #f #f #f))]
+    [(list xs ...)
+     (make-syntax (List (map to-syntax xs)) (Origin #f #f #f #f))]
+    [(? Syntax?)
+     x]
+    [(? number?)
+     (make-syntax (Constant x) (Origin #f #f #f #f))]))
+
 (define (test)
-  (define context (Context '(term-synspace) 0 (primordial-environment) #f))
+  (define context (Context (list term-synspace) 0 (primordial-environment) #f))
   (bind-in-context! "if" (list term-synspace)
                     (Transformer (λ (s r c)
                                    (match s
-                                     [($ (if p e1 e2))
-                                      (make-syntax (List (list (r (Symbol "case"))
-                                                               p
-                                                               (List (list (r (Symbol "True"))
-                                                                           e1))
-                                                               (List (list (r (Symbol "False"))
-                                                                           e1)))))]))
+                                     [($$ (List (list if p e1 e2)))
+                                      (to-syntax `(,(r (to-syntax 'case))
+                                                   ,p
+                                                   (,(r (to-syntax 'True))
+                                                    ,e1)
+                                                   (,(r (to-syntax 'False))
+                                                    ,e2)))]))
                                  context)
                     context)
-  (expand (List (list (Symbol "if") (Constant 1) (Constant 2)))
+  (expand (to-syntax '(if 1 2 3))
           context))
 
 (print (test))
