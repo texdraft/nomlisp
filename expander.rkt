@@ -1033,29 +1033,72 @@
     (parse-namething namething context inner)))
 
 (define (expand-define/type expression mode context)
+  (define (bind-constructor! name)
+    (define the-name (Name name))
+    (bind-in-context! name (list term-synspace pattern-synspace) the-name context)
+    the-name)
+  (define (data name etc. inner gadt? body)
+    (let loop ([constructors '()]
+               [body body])
+      (if (null? body)
+          (Define-Data name etc. (reverse constructors))
+          (match* (gadt? body)
+            [(#t ($ (name COLON type (REST rest))))
+             (loop (cons (Annotated (bind-constructor! name)
+                                    (expand-type type #f inner))
+                         constructors)
+                   rest)]
+            [(#f ($ ((ID name) (REST rest))))
+             (loop (cons (bind-constructor! name)
+                         constructors)
+                   rest)]
+            [(#f ($ ((name (REST component-types)) (REST rest))))
+             (loop (cons (cons (bind-constructor! name)
+                               (map (λ (t)
+                                      (expand-type t #f inner))
+                                    component-types))
+                         constructors)
+                   rest)]))))
+  (define (go namething k . rest)
+    (case mode
+      [(binding)
+       (parse-defining-type-name namething context (new-scope context))]
+      [(expanding)
+       (define inner (new-scope context))
+       (define-values (name etc.) (parse-defining-type-name namething context inner))
+       (apply k name etc. inner rest)]))
   (match expression
     [($ (define/type namething synonym))
-     (case mode
-       [(binding)
-        (parse-defining-type-name namething context (new-scope context))]
-       [(expanding)
-        (define inner (new-scope context))
-        (define-values (name etc.) (parse-defining-type-name namething context inner))
-        (Define-Type name etc. (expand-type synonym #f inner))])]
+     (go namething (λ (name etc. inner)
+                     (Define-Type name etc. (expand-type synonym #f inner))))]
     [($ (define/type namething (REST (and rest ($ (n1 COLON t1 (REST _)))))))
-     4]
+     (go namething data #t rest)]
     [($ (define/type namething (REST (and rest ($ (e1 e2 (REST _)))))))
-     4]))
+     (go namething data #f rest)]))
 
 (define (expand-define/class expression mode context)
   (match expression
     [($ (define/class namething (REST body)))
      (case mode
        [(binding)
-        (define expanded (expand-type namething #t context))
-        4]
+        (parse-defining-type-name namething context (new-scope context))]
        [(expanding)
-        4])]))
+        (define inner (new-scope context))
+        (define-values (name etc.) (parse-defining-type-name namething context inner))
+        (let loop ([body body]
+                   [items '()])
+          (if (null? body)
+              (Define-Class name etc. (reverse items))
+              (match body
+                [($ ((ID method-name) COLON type (REST rest)))
+                 (define the-name (Name method-name))
+                 (bind-in-context! method-name (list term-synspace) the-name context)
+                 (loop rest
+                       (cons (Annotated the-name (expand-type type #f inner))))]
+                [($ (declaration (REST rest)))
+                 (loop rest
+                       (cons (expand declaration (set-synspaces inner (list declaration-synspace)))
+                             items))])))])]))
 
 (define (expand-define/instance expression mode context)
   (match expression
@@ -1132,5 +1175,5 @@
                                                     ,e2)))]))
                                  context)
                     context)
-  (expand (to-syntax '(if 1 2 3))
+  (expand (to-syntax '(if 1 2 (if 3 4 5)))
           context))
