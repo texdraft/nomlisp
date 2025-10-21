@@ -1,5 +1,11 @@
 body {
 	font-family: "IBM Plex Serif", serif;
+	display: grid;
+	place-items: center;
+	word-spacing: 0.25em;
+	width: 100vw;
+	overflow-x: hidden;
+	margin: 0;
 }
 
 h1 {
@@ -35,10 +41,10 @@ h4 {
 }
 
 dl.rule-sequence {
-	width: 100em;
 	display: grid;
 	grid-template-columns: 25% 75%;
 }
+
 
 dl.rule-sequence dt {
 	grid-column: 1;
@@ -46,7 +52,7 @@ dl.rule-sequence dt {
 
 dl.rule-sequence .alternative {
 	display: grid;
-	grid-template-columns: 3ch 1fr 1fr;
+	grid-template-columns: 3ch 2.5fr 1fr;
 }
 
 .open-bracket,
@@ -102,14 +108,6 @@ dt.rule {
 sup,
 sub {
 	line-height: 0;
-}
-
-body {
-	display: flex;
-	flex-direction: column;
-	align-items: center;	
-	justify-content: center;
-	word-spacing: 0.25em;
 }
 
 .natural-language {

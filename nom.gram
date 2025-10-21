@@ -1,20 +1,21 @@
 "Lexical structure" ⟨
 
   s-expression →
-  | identifier
-  | dotted-identifier
+  | symbol
+  | qualifier s-expression
   | label
   | constant
   | (s-expression …)
   | @ s-expression
   | ⇐ s-expression
-  | [# identifier] delimited-expression
-  | [# dotted-identifier] delimited-expression
+  | delimited-expression
+  | # symbol s-expression
+  | # qualifier symbol s-expression
   ;
 
-  dotted-identifier →
-  | identifier . identifier
-  | identifier . dotted-identifier
+  qualifier →
+  | symbol
+  | qualifier . symbol
   ;
 
   delimited-expression →
@@ -29,16 +30,16 @@
   | ⟦the ith Unicode code point with Bidi_Paired_Bracket_Type = Close⟧
   ;
 
-  identifier →
-  | identifier-element …+, ⟦as long as constant does not generate this string⟧
+  symbol →
+  | symbol-element …+, ⟦as long as constant does not generate this string⟧
   ;
 
   label →
-  | : identifier
-  | : dotted-identifier
+  | : symbol
+  | : qualifier symbol
   ;
 
-  identifier-element →
+  symbol-element →
   | ⟦any character that isn't an opening/closing delimiter, whitespace, $(code "#"), or $(code "\\")⟧
   | \\ ⟦any character⟧
   ;
@@ -97,15 +98,15 @@
   "Basics" ⟨
 
     name →
-    | identifier
+    | symbol
     | qualified-name
     ;
 
     qualified-name →
-    | dotted-identifier, ⟦name exported by some module⟧
+    | qualifier symbol, ⟦name exported by some module⟧
     ;
 
-    delimiter-template →
+    notation-template →
     | [# name] delimited-expression
     ;
 
@@ -130,7 +131,6 @@
     | (tuple pattern …)                        , ⟦match tuple⟧
     | (where pattern (pattern expression) …)   , ⟦guard with additional matches⟧
     ;
-
   ⟩
 
   "Declarations" ⟨
@@ -148,16 +148,15 @@
 
       export →
       | (syntax syntax-port …+)                        , ⟦syntax bindings⟧
-      | (except export export …)                       , ⟦omit bindings⟧
       | (for-syntax export …)                          , ⟦higher-phase bindings⟧
-      | (prefix identifier export)                     , ⟦automatically rename⟧
+      | (prefix symbol export …)                   , ⟦automatically rename⟧
       | ported-name_term                               , ⟦variable⟧
-      | ('module ported-name_module)                  , ⟦submodule⟧
-      | ('type ported-name_type)                        , ⟦type synonym, ADT with no constructors⟧
-      | ('type ported-name_type (ported-name_term …))   , ⟦ADT with constructors⟧
+      | ('module ported-name_module)                   , ⟦submodule⟧
+      | ('type ported-name_type)                       , ⟦type synonym, ADT with no constructors⟧
+      | ('type ported-name_type (ported-name_term …))  , ⟦ADT with listed constructors⟧
       | (class ported-name_type [(ported-name_term …)]), ⟦type class, optional methods⟧
       | (instance ported-name_type)                    , ⟦type class instance⟧
-      | ('pattern ported-name_pattern)                  , ⟦constructor for matching⟧
+      | ('pattern ported-name_pattern)                 , ⟦constructor for matching⟧
       ;
 
       syntax-port →
@@ -167,7 +166,7 @@
 
       ported-syntax →
       | ported-name …
-      | ported-delimiter-template …
+      | ported-notation-template …
       ;
 
       ported-name_ns →
@@ -175,28 +174,27 @@
       | (rename name_ns name_ns), ⟦import/export under alias⟧
       ;
 
-      ported-delimiter-template_ns →
-      | delimiter-template_ns
-      | (rename delimiter-template_ns delimiter-template_ns), ⟦import/export under alias⟧
+      ported-notation-template_ns →
+      | notation-template_ns
+      | (rename notation-template_ns notation-template_ns), ⟦import/export under alias⟧
       ;
 
       import →
-      | name_module, ⟦all exports from module⟧
+      | ported-name_module, ⟦all exports from module⟧
       | import-item
       | (for-syntax import …), ⟦available at higher phase⟧
-      | (prefix identifier import), ⟦automatically rename⟧
-      | (from name_module import-item …+), ⟦restrict imported bindings⟧
+      | (prefix symbol import), ⟦automatically rename⟧
+      | (except name_module import-item …), ⟦omit bindings⟧
+      | (from name_module import-item …), ⟦restrict imported bindings⟧
       ;
 
       import-item →
-      | (qualified import [name_module]), ⟦new module name⟧
       | ported-name_term, ⟦variable⟧
       | ('module ported-name_module), ⟦submodule⟧
       | ('type ported-name_type), ⟦type synonym or ADT⟧
       | (class ported-name_type), ⟦type class⟧
       | (instance ported-name_type), ⟦type class instance⟧
       | ('pattern ported-name_pattern), ⟦constructor for matching⟧
-      | (except import import-item …), ⟦omit bindings⟧
       | (syntax syntax-port …+), ⟦syntactic bindings⟧
       ;
     ⟩
@@ -205,22 +203,22 @@
 
       declaration →
       | definition
-      | (implicit name_type …), ⟦make instances implicit⟧
       | metadata-declaration
+      | (implicit name_type …), ⟦make instances implicit⟧
       | ('import import …), ⟦bring in external bindings⟧
-      | (splice declaration …) splice nested declarations
-      | (for-syntax declaration …) define at higher phase
+      | (splice declaration …), ⟦splice nested declarations⟧
+      | (for-syntax declaration …), ⟦define at higher phase⟧
       ;
 
       definition →
       | module-definition
       | variable-definition
-      | (define/type defining-type-name type)                              , ⟦type synonym⟧
-      | (define/type defining-type-name data-body)                         , ⟦algebraic data type⟧
-      | (define/class defining-type-name typeclass-item …)                 , ⟦type class⟧
+      | (define/type type type)                                            , ⟦type synonym⟧
+      | (define/data type data-body)                                       , ⟦algebraic data type⟧
+      | (define/class type typeclass-item …)                               , ⟦type class⟧
       | (define/instance name_type constraint instance-item …)             , ⟦type class instance⟧
-      | (define/syntax name_term (name_synspace …+) expression)             , ⟦syntactic binding⟧
-      | (define/sugar delimiter-template_term (name_synspace …+) expression) , ⟦syntactic extension⟧
+      | (define/syntax (name_synspace …+) name_term expression)            , ⟦expansion-time binding⟧
+      | (define/notation (name_synspace …+) notation-template_term expression) , ⟦syntactic extension⟧
       ;
 
       variable-definition →
@@ -229,20 +227,9 @@
       | (define name_term [: type] (λ (parameter …) body)…+), ⟦define by matching⟧
       ;
 
-      defining-type-name →
-      | (∀ (name_type …+) defining-type-name), ⟦quantified arguments⟧
-      | type-name-with-possible-arguments
-      | (⇒ constraint …+ defining-type-name), ⟦constrained arguments⟧
-      ;
-
-      type-name-with-possible-arguments →
-      | name_type               , ⟦no arguments⟧
-      | (name_type name_type …+), ⟦type with arguments⟧
-      ;
-
       data-body →
-      | traditional-data-item traditional-data-item …+, ⟦avoid ambiguity by requiring two⟧
-      | gadt-item …+, ⟦always unambiguous⟧
+      | traditional-data-item …
+      | gadt-item …
       ;
 
       traditional-data-item →
@@ -344,7 +331,7 @@
     | (delimit expression expression)             , ⟦delimit continuation⟧
     | (capture-to expression name_term expression), ⟦take continuation⟧
     | (begin body)                                , ⟦introduce body⟧
-    | (quote expression)                          , ⟦treat as syntax object⟧
+    | (quote s-expression)                        , ⟦treat as syntax object⟧
     | (record {label expression} … [expression])  , ⟦construct record with row⟧
     | (tuple expression …)                        , ⟦construct tuple⟧
     | (case expression (pattern expression) …+)   , ⟦pattern matching⟧
